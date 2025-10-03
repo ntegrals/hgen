@@ -55,6 +55,7 @@ dev = [
 ]
 quantization = [
     "bitsandbytes>=0.41.0",
+    "torchao>=0.1.0",
 ]
 video = [
     "opencv-python>=4.8.0",

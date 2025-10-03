@@ -122,40 +122,71 @@ class Model:
         mode: str = "regional",
         fullgraph: bool = True,
         dynamic: bool = True,
+        use_channels_last: bool = True,
     ) -> None:
         """Apply torch.compile optimizations.
-        
+
         Args:
             mode: Compilation mode - "regional" or "full"
             fullgraph: Whether to compile as full graph
             dynamic: Enable dynamic shapes to avoid recompilation
+            use_channels_last: Use channels_last memory format
         """
         if self._compiled:
             return
-            
+
         if hasattr(self.pipeline, "transformer"):
             target = self.pipeline.transformer
         elif hasattr(self.pipeline, "unet"):
             target = self.pipeline.unet
         else:
             raise ValueError("No compilable component found in pipeline")
-            
+
+        # Set channels_last memory format for better performance
+        if use_channels_last:
+            target.to(memory_format=torch.channels_last)
+            if hasattr(self.pipeline, "vae"):
+                self.pipeline.vae.to(memory_format=torch.channels_last)
+
         if mode == "regional":
             self.compiler.compile_regional(target, fullgraph=fullgraph, dynamic=dynamic)
         elif mode == "full":
             self.compiler.compile_full(target, fullgraph=fullgraph, dynamic=dynamic)
         else:
             raise ValueError(f"Invalid compilation mode: {mode}")
-            
+
         self._compiled = True
         
+    def enable_fused_qkv_projections(self) -> None:
+        """Enable fused QKV projections for faster attention.
+
+        Combines Q, K, V projections into a single matrix multiplication
+        for improved performance, especially with quantization.
+        """
+        if hasattr(self.pipeline, "fuse_qkv_projections"):
+            self.pipeline.fuse_qkv_projections()
+        else:
+            # Manually fuse for UNet/Transformer
+            if hasattr(self.pipeline, "transformer"):
+                self._fuse_qkv_in_module(self.pipeline.transformer)
+            if hasattr(self.pipeline, "unet"):
+                self._fuse_qkv_in_module(self.pipeline.unet)
+            if hasattr(self.pipeline, "vae"):
+                self._fuse_qkv_in_module(self.pipeline.vae)
+
+    def _fuse_qkv_in_module(self, module: torch.nn.Module) -> None:
+        """Helper to fuse QKV projections in a module."""
+        for name, submodule in module.named_modules():
+            if hasattr(submodule, "fuse_projections"):
+                submodule.fuse_projections()
+
     def enable_cpu_offload(self) -> None:
         """Enable CPU offloading to reduce VRAM usage."""
         self.memory_optimizer.enable_cpu_offload(self.pipeline)
-        
+
     def enable_quantization(self, bits: int = 4) -> None:
         """Enable weight quantization.
-        
+
         Args:
             bits: Number of bits for quantization (4 or 8)
         """

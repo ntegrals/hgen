@@ -16,16 +16,26 @@ class OptimizedCompiler:
         
     def _configure_inductor(self) -> None:
         """Configure torch inductor for optimal performance."""
+        # Core inductor settings from diffusion-fast
+        config.conv_1x1_as_mm = True
         config.coordinate_descent_tuning = True
+        config.epilogue_fusion = False
+        config.coordinate_descent_check_all_directions = True
+
+        # Additional performance settings
         config.triton.unique_kernel_names = True
         config.fx_graph_cache = True
         config.max_autotune_gemm_backends = "TRITON"
-        
+
         if torch.cuda.is_available():
             torch.backends.cuda.matmul.allow_tf32 = True
             torch.backends.cudnn.allow_tf32 = True
             torch.backends.cudnn.benchmark = True
             torch.backends.cudnn.deterministic = False
+
+            # Set float32 matmul precision for A100/H100
+            if hasattr(torch, "set_float32_matmul_precision"):
+                torch.set_float32_matmul_precision("high")
             
     def compile_full(
         self,

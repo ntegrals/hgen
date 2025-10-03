@@ -162,32 +162,68 @@ class MemoryOptimizer:
         except ImportError:
             pass
             
+    def enable_dynamic_int8_quantization(
+        self,
+        pipeline: Any,
+        filter_fn: Optional[Any] = None,
+    ) -> None:
+        """Enable dynamic int8 quantization using torchao.
+
+        Args:
+            pipeline: Diffusion pipeline
+            filter_fn: Optional filter function to select layers for quantization
+        """
+        try:
+            from torchao.quantization import apply_dynamic_quant
+
+            # Set inductor flags for int8 quantization
+            if hasattr(torch, "_inductor"):
+                torch._inductor.config.force_fuse_int_mm_with_mul = True
+                torch._inductor.config.use_mixed_mm = True
+
+            components = ["transformer", "unet", "vae"]
+
+            for component_name in components:
+                if hasattr(pipeline, component_name):
+                    component = getattr(pipeline, component_name)
+                    if component is not None:
+                        # Apply quantization with optional filtering
+                        if filter_fn is not None:
+                            apply_dynamic_quant(component, filter_fn)
+                        else:
+                            # Default: quantize all linear layers
+                            apply_dynamic_quant(component)
+
+        except ImportError:
+            print("torchao not installed, falling back to PyTorch quantization")
+            self._fallback_quantization(pipeline, bits=8)
+
     def _fallback_quantization(
         self,
         pipeline: Any,
         bits: int,
     ) -> None:
         """Fallback quantization using PyTorch native methods.
-        
+
         Args:
             pipeline: Diffusion pipeline
             bits: Number of bits
         """
         components = ["transformer", "unet", "vae"]
-        
+
         for component_name in components:
             if hasattr(pipeline, component_name):
                 component = getattr(pipeline, component_name)
                 if component is not None:
                     self._apply_dynamic_quantization(component, bits)
-                    
+
     def _apply_dynamic_quantization(
         self,
         module: nn.Module,
         bits: int,
     ) -> None:
         """Apply PyTorch dynamic quantization.
-        
+
         Args:
             module: Module to quantize
             bits: Number of bits
