@@ -120,7 +120,7 @@ class Model:
     def compile(
         self,
         mode: str = "regional",
-        fullgraph: bool = True,
+        fullgraph: bool = False,
         dynamic: bool = True,
         use_channels_last: bool = True,
     ) -> None:
@@ -128,7 +128,7 @@ class Model:
 
         Args:
             mode: Compilation mode - "regional" or "full"
-            fullgraph: Whether to compile as full graph
+            fullgraph: Whether to compile as full graph (False by default to avoid CUDA graph issues)
             dynamic: Enable dynamic shapes to avoid recompilation
             use_channels_last: Use channels_last memory format
         """

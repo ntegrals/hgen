@@ -43,49 +43,61 @@ class OptimizedCompiler:
         fullgraph: bool = True,
         dynamic: bool = True,
         mode: str = "max-autotune",
+        disable_cudagraphs: bool = False,
     ) -> torch.nn.Module:
         """Full model compilation.
-        
+
         Args:
             model: Model to compile
             fullgraph: Compile as single graph
             dynamic: Enable dynamic shapes
             mode: Compilation mode
-            
+            disable_cudagraphs: Disable CUDA graphs to avoid tensor overwriting issues
+
         Returns:
             Compiled model
         """
+        # Temporarily disable CUDA graphs if requested
+        if disable_cudagraphs:
+            original_cudagraphs = config.triton.cudagraphs
+            config.triton.cudagraphs = False
+
         compile_kwargs = {
             "fullgraph": fullgraph,
             "dynamic": dynamic,
             "mode": mode,
         }
-        
+
         if hasattr(model, "compile"):
             model.compile(**compile_kwargs)
         else:
             model = torch.compile(model, **compile_kwargs)
-            
+
+        # Restore original setting
+        if disable_cudagraphs:
+            config.triton.cudagraphs = original_cudagraphs
+
         return model
         
     def compile_regional(
         self,
         model: torch.nn.Module,
-        fullgraph: bool = True,
+        fullgraph: bool = False,
         dynamic: bool = True,
         mode: str = "max-autotune",
     ) -> torch.nn.Module:
         """Regional compilation for transformer blocks.
-        
+
         Args:
             model: Model to compile
-            fullgraph: Compile blocks as full graphs
+            fullgraph: Compile blocks as full graphs (default False to avoid CUDA graph issues)
             dynamic: Enable dynamic shapes
             mode: Compilation mode
-            
+
         Returns:
             Compiled model
         """
+        # For Flux models, use the built-in method if available
         if hasattr(model, "compile_repeated_blocks"):
             model.compile_repeated_blocks(
                 fullgraph=fullgraph,
@@ -99,7 +111,7 @@ class OptimizedCompiler:
                 dynamic=dynamic,
                 mode=mode,
             )
-            
+
         return model
         
     def _compile_transformer_blocks(
